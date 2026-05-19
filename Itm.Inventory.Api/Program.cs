@@ -63,6 +63,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidAudience = jwtSettings["Audience"],
             ValidateLifetime = true, // Valida que el token no haya expirado
+            RequireExpirationTime = false,
             ValidateIssuerSigningKey = true, // Valida la firma del token
             IssuerSigningKey = new SymmetricSecurityKey(secretKey) // Clave secreta para validar la firma
         };
