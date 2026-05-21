@@ -1,7 +1,34 @@
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.IdentityModel.Tokens;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// =========================
+// SEGURIDAD PERIMETRAL: Validación JWT en el Gateway
+// =========================
+var jwtSettings = builder.Configuration.GetSection("JwtSettings");
+var secretKey = Encoding.UTF8.GetBytes(jwtSettings["SecretKey"]!);
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtSettings["Issuer"],
+            ValidateAudience = true,
+            ValidAudience = jwtSettings["Audience"],
+            ValidateLifetime = true,
+            RequireExpirationTime = false,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(secretKey)
+        };
+    });
+
+builder.Services.AddAuthorization();
 
 // =========================
 // Configuración de YARP
@@ -10,43 +37,59 @@ builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
 // =========================
-// Configuración de Rate Limiting
+// CONTROL DE MULTITUDES: Rate Limiting con política por ruta
 // =========================
 builder.Services.AddRateLimiter(options =>
 {
-    // Código HTTP cuando se excede el límite
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-    // Política de ventana fija
-    options.AddPolicy("fixed-policy", httpContext =>
-        RateLimitPartition.GetFixedWindowLimiter(
+    options.AddPolicy("per-route", httpContext =>
+    {
+        var path = httpContext.Request.Path.Value?.ToLowerInvariant() ?? "";
+
+        int permitLimit;
+        TimeSpan window;
+
+        if (path.Contains("/api/orders"))
+        {
+            permitLimit = 5;
+            window = TimeSpan.FromSeconds(10);
+        }
+        else if (path.Contains("/bodega") || path.Contains("/api/products") || path.Contains("/api/price"))
+        {
+            permitLimit = 30;
+            window = TimeSpan.FromSeconds(10);
+        }
+        else
+        {
+            permitLimit = 10;
+            window = TimeSpan.FromSeconds(10);
+        }
+
+        return RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: httpContext.Connection.RemoteIpAddress?.ToString(),
             factory: _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = 5,                  // Máximo 5 peticiones
-                Window = TimeSpan.FromSeconds(10), // Cada 10 segundos
-                QueueLimit = 0                    // No encolar solicitudes
-            }));
+                PermitLimit = permitLimit,
+                Window = window,
+                QueueLimit = 0
+            });
+    });
 });
 
 var app = builder.Build();
 
 // =========================
-// Activar middleware
+// Middleware pipeline
 // =========================
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseRateLimiter();
 
 // =========================
-// Configurar Reverse Proxy
+// Rutas del Gateway con políticas específicas
 // =========================
 app.MapReverseProxy()
-    .RequireRateLimiting("fixed-policy");
+    .RequireRateLimiting("per-route");
 
 app.Run();
-
-//¿Qué hace esta configuración?
-// Permite máximo 5 solicitudes por IP.
-// El contador se reinicia cada 10 segundos.
-// Si un cliente supera el límite:
-//  recibe un HTTP 429 — Too Many Requests.
-// No se almacenan solicitudes en cola (QueueLimit = 0).

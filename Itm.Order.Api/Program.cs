@@ -1,8 +1,9 @@
 using System.Net.Http.Json;
 using Microsoft.Extensions.Http.Resilience;
-using MassTransit; // Para futuras implementaciones de SAGA coreografiada con RabbitMQ o Azure Service Bus
+using MassTransit;
 using Itm.Order.Api.Handlers;
-using Itm.Inventory.Api.Protos; // Added for Grpc types
+using Itm.Inventory.Api.Protos;
+using Itm.Shared.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -64,7 +65,7 @@ if (app.Environment.IsDevelopment())
 }
 
 // Endpoint principal de creación de órdenes con lógica SAGA (acción + compensación)
-app.MapPost("/api/orders", async (CreateOrderDto order, IHttpClientFactory factory) =>
+app.MapPost("/api/orders", async (CreateOrderDto order, IHttpClientFactory factory, IBus bus) =>
 {
     var invClient = factory.CreateClient("InventoryClient");
 
@@ -79,7 +80,16 @@ app.MapPost("/api/orders", async (CreateOrderDto order, IHttpClientFactory facto
     // Si llegamos aquí, YA RESTAMOS EL STOCK. A partir de aquí necesitamos compensación si algo falla.
     try
     {
-        // PASO 2: Procesar el Pago (simulación de fallo aleatorio)
+        // PASO 2: Obtener precio actual desde Price.Api (Redis cache)
+        var priceClient = factory.CreateClient("PriceClient");
+        var priceResponse = await priceClient.GetFromJsonAsync<PriceResponse>($"/api/price/{order.ProductId}");
+
+        if (priceResponse is null)
+        {
+            throw new InvalidOperationException("No se pudo obtener el precio del producto.");
+        }
+
+        // PASO 3: Procesar el Pago (simulación de fallo aleatorio)
         var random = new Random();
         var paymentSuccess = random.Next(0, 10) > 5; // Aprox. 50% de éxito
 
@@ -88,7 +98,21 @@ app.MapPost("/api/orders", async (CreateOrderDto order, IHttpClientFactory facto
             throw new InvalidOperationException("Fondos insuficientes en la tarjeta.");
         }
 
-        return Results.Ok(new { Message = "Orden creada y pagada exitosamente." });
+        // PASO 4: Publicar evento OrderCreated para SAGA coreografiada
+        var orderId = Guid.NewGuid();
+        var orderEvent = new OrderCreatedEvent(orderId, order.ProductId, "cliente@itm.edu.co", priceResponse.Amount * order.Quantity);
+        await bus.Publish(orderEvent);
+
+        Console.WriteLine($"[SAGA] Orden {orderId} creada. Evento OrderCreated publicado.");
+
+        return Results.Ok(new
+        {
+            OrderId = orderId,
+            Message = "Orden creada y pagada exitosamente.",
+            ProductPrice = priceResponse.Amount,
+            Currency = priceResponse.Currency,
+            PriceSource = priceResponse.Source
+        });
     }
     catch (Exception ex)
     {
@@ -130,7 +154,7 @@ public record CreateOrderDto(int ProductId, int Quantity);
 
 public record InventoryResponse(int ProductId, int Stock, string Sku);
 
-public record PriceResponse(int ProductId, decimal Amount, string Currency);
+public record PriceResponse(int ProductId, decimal Amount, string Currency, string Source);
 
 // Simulación de DTO de Pago (para futuras extensiones de la SAGA)
 public record PaymentDto(int OrderId, decimal Amount);

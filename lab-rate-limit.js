@@ -116,6 +116,7 @@ export default function () {
         `Tiempo: ${response.timings.duration.toFixed(0)}ms`
     );
 
+
     // Sin sleep: queremos las 20 peticiones lo más rápido posible
     // para saturar la ventana de 10 segundos antes de que se resetee.
     // Si quieres ver la recuperación después de los 10s, descomenta la línea:
@@ -140,7 +141,7 @@ export function handleSummary(data) {
   Política activa:
     PermitLimit = 5 peticiones
     Window      = 10 segundos
-    QueueLimit  = 0 (sin cola)
+    QueueLimit  = 0 (sin cola)  
 
   RESULTADO: ${blocked >= 15 && ok >= 5 ? '✅ LABORATORIO APROBADO' : '❌ REVISAR - el Rate Limiter no bloqueó como se esperaba'}
 ================================================================================
