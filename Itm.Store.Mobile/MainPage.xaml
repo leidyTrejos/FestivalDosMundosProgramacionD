@@ -6,7 +6,7 @@
     <ScrollView>
         <VerticalStackLayout Padding="30" Spacing="25">
 
-            <Label Text="ITM-Tickets Móvil " 
+            <Label Text="ITM-Tickets Móvil" 
                    FontSize="28" 
                    FontAttributes="Bold" 
                    HorizontalOptions="Center" />
@@ -21,10 +21,26 @@
                     Clicked="OnGetDataClicked"
                     BackgroundColor="#2b82d4" />
 
+            <Button x:Name="GetPriceBtn"
+                    Text="3. Ver Precio del Evento"
+                    Clicked="OnGetPriceClicked"
+                    BackgroundColor="#2ecc71" />
+
+            <Button x:Name="BuyTicketBtn"
+                    Text="4. Comprar Boleta"
+                    Clicked="OnBuyTicketClicked"
+                    BackgroundColor="#e74c3c" />
+
             <Label x:Name="ResultLabel" 
                    Text="Esperando acción..."
                    TextColor="Gray"
                    FontSize="16" />
+
+            <Image x:Name="QrCodeImage" 
+                   HeightRequest="200"
+                   WidthRequest="200"
+                   HorizontalOptions="Center"
+                   IsVisible="False" />
 
         </VerticalStackLayout>
     </ScrollView>

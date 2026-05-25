@@ -13,4 +13,6 @@
     <Deploy Solution="Debug|*" />
   </Project>
   <Project Path="Itm.Tickets.Functions/Itm.Tickets.Functions.csproj" />
+  <Project Path="Itm.Notification.Api/Itm.Notification.Api.csproj" />
+  <Project Path="Itm.Search.Api/Itm.Search.Api.csproj" />
 </Solution>

@@ -36,8 +36,7 @@ builder.Services
 builder.Services
     .AddHttpClient("PriceClient", client =>
     {
-        // TODO: Ajustar al puerto real de Price.Api cuando exista el proyecto
-        client.BaseAddress = new Uri("http://localhost:5280");
+        client.BaseAddress = new Uri("http://localhost:5300");
         client.Timeout = TimeSpan.FromSeconds(5);
     })
     .AddHttpMessageHandler<CorrelationIdDelegatingHandler>()
@@ -65,8 +64,15 @@ if (app.Environment.IsDevelopment())
 }
 
 // Endpoint principal de creación de órdenes con lógica SAGA (acción + compensación)
-app.MapPost("/api/orders", async (CreateOrderDto order, IHttpClientFactory factory, IBus bus) =>
+app.MapPost("/api/orders", async (CreateOrderDto order, IHttpClientFactory factory, IBus bus, Itm.Inventory.Api.Protos.InventoryService.InventoryServiceClient grpcClient) =>
 {
+    // PASO 0: Verificar stock vía gRPC antes de modificar inventario
+    var stockCheck = await grpcClient.CheckStockAsync(new Itm.Inventory.Api.Protos.StockRequest { ProductId = order.ProductId });
+    if (!stockCheck.IsAvailable)
+    {
+        return Results.BadRequest($"Stock insuficiente. Solo quedan {stockCheck.Stock} unidades. Transacción abortada.");
+    }
+
     var invClient = factory.CreateClient("InventoryClient");
 
     // PASO 1: Intentar reservar Stock (acción directa sobre Inventario)
@@ -82,7 +88,7 @@ app.MapPost("/api/orders", async (CreateOrderDto order, IHttpClientFactory facto
     {
         // PASO 2: Obtener precio actual desde Price.Api (Redis cache)
         var priceClient = factory.CreateClient("PriceClient");
-        var priceResponse = await priceClient.GetFromJsonAsync<PriceResponse>($"/api/price/{order.ProductId}");
+        var priceResponse = await priceClient.GetFromJsonAsync<PriceResponse>($"/api/prices/{order.ProductId}");
 
         if (priceResponse is null)
         {
@@ -154,7 +160,7 @@ public record CreateOrderDto(int ProductId, int Quantity);
 
 public record InventoryResponse(int ProductId, int Stock, string Sku);
 
-public record PriceResponse(int ProductId, decimal Amount, string Currency, string Source);
+public record PriceResponse(int EventId, decimal Amount, string Currency, DateTimeOffset CachedAt, string Source);
 
 // Simulación de DTO de Pago (para futuras extensiones de la SAGA)
 public record PaymentDto(int OrderId, decimal Amount);

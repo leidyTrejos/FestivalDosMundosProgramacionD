@@ -37,7 +37,7 @@ builder.Services.AddSingleton<CacheMetrics>();
 
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    options.Configuration = builder.Configuration.GetConnectionString("Redis");
+    options.Configuration = builder.Configuration["RedisConnection"];
     options.InstanceName = "ItmPriceCache:";
 });
 
@@ -54,9 +54,9 @@ app.UseAuthorization();
 
 var metrics = app.Services.GetRequiredService<CacheMetrics>();
 
-app.MapGet("/api/price/{id}", async (int id, IDistributedCache cache, PriceDatabase db) =>
+app.MapGet("/api/prices/{eventId}", async (int eventId, IDistributedCache cache, PriceDatabase db, HttpContext httpContext) =>
 {
-    var cacheKey = $"price:{id}";
+    var cacheKey = $"price:{eventId}";
 
     var cachedPrice = await cache.GetStringAsync(cacheKey);
 
@@ -64,22 +64,25 @@ app.MapGet("/api/price/{id}", async (int id, IDistributedCache cache, PriceDatab
     {
         metrics.RecordHit();
         var price = JsonSerializer.Deserialize<PriceResponse>(cachedPrice);
-        return Results.Ok(price with { Source = "Redis Cache (90% hit rate)" });
+        httpContext.Response.Headers["X-Cache-Hit"] = "true";
+        return Results.Ok(price with { Source = "Redis Cache" });
     }
 
     metrics.RecordMiss();
-    var dbPrice = db.GetPriceById(id);
+    var dbPrice = db.GetPriceById(eventId);
 
     if (dbPrice is null)
-        return Results.NotFound(new { Error = "Producto no encontrado" });
+        return Results.NotFound(new { Error = "Evento no encontrado" });
 
-    var response = new PriceResponse(dbPrice!.ProductId, dbPrice.Amount, dbPrice.Currency, "SQL Database");
+    var currentTime = DateTimeOffset.UtcNow;
+    var response = new PriceResponse(dbPrice.EventId, dbPrice.Amount, dbPrice.Currency, currentTime, "Database");
 
     await cache.SetStringAsync(cacheKey, JsonSerializer.Serialize(response), new DistributedCacheEntryOptions
     {
-        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
+        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5)
     });
 
+    httpContext.Response.Headers["X-Cache-Hit"] = "false";
     return Results.Ok(response);
 })
 .RequireAuthorization();

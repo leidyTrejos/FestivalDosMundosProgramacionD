@@ -1,3 +1,3 @@
 namespace Itm.Price.Api.Models;
 
-public record PriceResponse(int ProductId, decimal Amount, string Currency, string Source);
+public record PriceResponse(int EventId, decimal Amount, string Currency, DateTimeOffset CachedAt, string Source);

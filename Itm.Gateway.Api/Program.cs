@@ -90,6 +90,7 @@ app.UseRateLimiter();
 // Rutas del Gateway con políticas específicas
 // =========================
 app.MapReverseProxy()
+    .RequireAuthorization()
     .RequireRateLimiting("per-route");
 
 app.Run();
