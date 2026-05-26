@@ -10,10 +10,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Permitir gRPC sin TLS en desarrollo
+AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
+
 // Agregar configuración del cliente gRPC para InventoryService
 builder.Services.AddGrpcClient<InventoryService.InventoryServiceClient>(o =>
 {
-    o.Address = new Uri("https://localhost:7198"); // Puerto HTTPS actual de Inventory.Api (ver launchSettings.json del proyecto Inventory)
+    o.Address = new Uri("http://localhost:5273");
 });
 
 // Necesario para leer encabezados de la petición HTTP entrante
@@ -47,9 +50,13 @@ builder.Services.AddMassTransit(x =>
 {
     x.UsingRabbitMq((context, cfg) =>
     {
-    //Peguen aquí su AMQP URL DE CLOUDAMQP (Entre comillas dobles)
-    // En un trabajo real, esto va en el KeyVault o en las variables de entorno, no hardcodeado
-    cfg.Host("amqps://wqwoltap:bYzWB8MvzX891TQSA8YY5HB8ePSdLWda@turkey.rmq.cloudamqp.com/wqwoltap");
+        //Peguen aquí su AMQP URL DE CLOUDAMQP (Entre comillas dobles)
+        // En un trabajo real, esto va en el KeyVault o en las variables de entorno, no hardcodeado
+        cfg.Host("rabbitmq://localhost", h =>
+        {
+            h.Username("guest");
+            h.Password("guest");
+        });
     });
 });
 

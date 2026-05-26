@@ -12,9 +12,10 @@ builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin()
+        policy.SetIsOriginAllowed(_ => true)
               .AllowAnyHeader()
-              .AllowAnyMethod();
+              .AllowAnyMethod()
+              .AllowCredentials();
     });
 });
 
@@ -29,7 +30,7 @@ builder.Services.AddMassTransit(x =>
     x.AddConsumer<OrderCreatedConsumer>();
     x.UsingRabbitMq((context, cfg) =>
     {
-        cfg.Host(builder.Configuration["RabbitMqConnection"] ?? "amqps://wqwoltap:bYzWB8MvzX891TQSA8YY5HB8ePSdLWda@turkey.rmq.cloudamqp.com/wqwoltap");
+        cfg.Host(builder.Configuration["RabbitMqConnection"] ?? "rabbitmq://guest:guest@localhost");
         cfg.ReceiveEndpoint("notification-order-created-queue", e =>
         {
             e.ConfigureConsumer<OrderCreatedConsumer>(context);

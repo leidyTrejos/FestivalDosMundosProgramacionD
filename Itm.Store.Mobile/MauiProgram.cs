@@ -28,7 +28,7 @@ public static class MauiProgram
         // Para desarrollo local con emulador Android, usar 10.0.2.2 (localhost del emulador).
         builder.Services.AddHttpClient("GatewayClient", client =>
         {
-            client.BaseAddress = new Uri("https://api.itm-tickets.com");
+            client.BaseAddress = new Uri("http://10.0.2.2:5183");
             client.DefaultRequestHeaders.Add("X-Gateway-Source", "ItmStoreMobile");
         })
         .AddHttpMessageHandler<AuthHandler>();
