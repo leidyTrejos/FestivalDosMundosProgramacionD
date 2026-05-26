@@ -167,33 +167,140 @@ Ejemplo de respuesta esperada:
 
 ## Cómo Ejecutar la Solución Localmente
 
-1. **Clonar el repositorio**
+### Paso 1 — Clonar el repositorio
 
 ```bash
 git clone https://github.com/CSA-DanielVillamizar/190304014-1.git
 cd 190304014-1
 ```
 
-2. **Abrir en Visual Studio**
+### Paso 2 — Levantar infraestructura
 
-- Abrir la solución `Itm.Store.System.sln`.
+```bash
+docker compose up -d
+```
 
-3. **Configurar proyectos de inicio múltiples**
+Verifica que todo esté corriendo:
 
-- Clic derecho sobre la **solución** → `Propiedades`.
-- Opción: `Proyectos de inicio múltiples`.
-- Seleccionar `Itm.Inventory.Api` y `Itm.Product.Api` con acción `Iniciar`.
+```bash
+docker compose ps
+# Debes ver: redis, rabbitmq, elasticsearch, qdrant — todos "running"
+```
 
-4. **Verificar puertos**
+Espera ~30 segundos a que Elasticsearch termine de arrancar. Puedes verificar en http://localhost:9200.
 
-- Ejecutar la solución.
-- Revisar en qué puerto corre `Itm.Inventory.Api` (por ejemplo, `http://localhost:5273`).
-- Confirmar que el `BaseAddress` en `Itm.Product.Api` apunta a ese mismo puerto.
+### Paso 3 — Correr los microservicios
 
-5. **Probar el flujo completo**
+Abre 7 terminales (o configura múltiples proyectos de inicio en Visual Studio):
 
-- Abrir Swagger de `Itm.Product.Api`.
-- Probar el endpoint `GET /api/products/{id}/check-stock` con `id = 1`.
+```bash
+# Terminal 1
+dotnet run --project Itm.Inventory.Api
+
+# Terminal 2
+dotnet run --project Itm.Order.Api
+
+# Terminal 3
+dotnet run --project Itm.Product.Api
+
+# Terminal 4
+dotnet run --project Itm.Price.Api
+
+# Terminal 5
+dotnet run --project Itm.Notification.Api
+
+# Terminal 6
+dotnet run --project Itm.Search.Api
+
+# Terminal 7
+dotnet run --project Itm.Gateway.Api
+```
+
+> **Orden importa:** Inventory primero, luego Order (depende de Inventory vía gRPC).
+
+### Paso 4 — Obtener el JWT para pruebas
+
+El token ya está hardcodeado en el código. Para Swagger usa este:
+
+```
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJJdG1JZGVudGl0eVNlcnZlciIsImF1ZCI6Ikl0bVN0b3JlQXBpcyIsImVtYWlsIjoiYWRtaW5AaXRtLmVkdS5jbyIsInJvbGUiOiJBZG1pbmlzdHJhZG9yIn0.PaSdxe8NkHzbkrTA40janIgKn4gnVp63yWh_cenvUDw
+```
+
+> En Swagger, clic en **Authorize** → pegar el token sin `Bearer` (Swagger lo agrega solo).
+
+### Paso 5 — Validar cada criterio de la rúbrica
+
+#### Criterio 1 — Integración funcional (1.5 pts)
+
+En Swagger de Gateway (`http://localhost:5183`), o directamente en Order.Api (`http://localhost:5110/swagger`):
+
+```
+POST /api/orders
+Body: { "productId": 1, "quantity": 1 }
+Header: Authorization: Bearer <token>
+```
+
+Si el pago "simulado" sale exitoso, verás la respuesta con `OrderId`. Ejecuta varias veces hasta que salga exitosa (50% de probabilidad cada vez).
+
+Para verificar SignalR: abre `http://localhost:5400` en el navegador y conéctate al hub con un cliente JS, o usa el Swagger de Notification.Api para hacer `POST /api/notifications/ticket-ready` manualmente.
+
+#### Criterio 2 — Resiliencia y SAGA (1.0 pt)
+
+Cuando el pago falle, la respuesta debe decir `"El stock fue devuelto"`. Verifica que el stock en Inventory siga en 50:
+
+```
+GET http://localhost:5273/api/inventory/1
+Authorization: Bearer <token>
+```
+
+El stock debe seguir siendo el mismo que antes de la orden fallida.
+
+#### Criterio 3 — Redis / gRPC (1.0 pt)
+
+Haz dos requests seguidas a Price.Api:
+
+```
+GET http://localhost:5300/api/prices/1
+Authorization: Bearer <token>
+```
+
+La primera respuesta tendrá header `X-Cache-Hit: false`. La segunda tendrá `X-Cache-Hit: true`. Eso demuestra el caché Redis funcionando.
+
+Luego ejecuta `k6 run lab-rate-limit.js` para demostrar Rate Limiting. Asegúrate de que Inventory y Gateway estén corriendo.
+
+#### Criterio 4 — DevOps (1.0 pt)
+
+Para la demo en vivo, muestra el pipeline en GitHub Actions (`.github/workflows/build-and-push.yml`). El HPA y los YAMLs de Kubernetes están en la raíz.
+
+Si tienes Docker Desktop con Kubernetes habilitado:
+
+```bash
+kubectl apply -f inventory-deployment.yaml
+kubectl apply -f hpa.yaml
+kubectl get pods -w
+```
+
+#### Criterio 5 — IA Semántica (0.5 pt)
+
+```
+GET http://localhost:5500/api/search/events?q=jazz
+GET http://localhost:5500/api/search/events/semantic?vibe=quiero%20escuchar%20musica%20en%20vivo
+```
+
+Estos no requieren JWT. El segundo usa los vectores precomputados y Qdrant.
+
+### Resumen de URLs para la Demo
+
+| Servicio     | URL                                  |
+| ------------ | ------------------------------------ |
+| Gateway      | http://localhost:5183                |
+| Inventory    | http://localhost:5273/swagger        |
+| Order        | http://localhost:5110/swagger        |
+| Price        | http://localhost:5300/swagger        |
+| Product      | http://localhost:5041/swagger        |
+| Notification | http://localhost:5400                |
+| Search       | http://localhost:5500/swagger        |
+| RabbitMQ UI  | http://localhost:15672 (guest/guest) |
 
 ---
 
@@ -391,16 +498,14 @@ Ejemplo de configuración para exponer `Inventory.Api` como `/bodega` desde el G
         "Match": {
           "Path": "/bodega/{**catch-all}"
         },
-        "Transforms": [
-          { "PathPattern": "/api/inventory/{**catch-all}" }
-        ]
+        "Transforms": [{ "PathPattern": "/api/inventory/{**catch-all}" }]
       }
     },
     "Clusters": {
       "inventory-cluster": {
         "Destinations": {
           "destination1": {
-            "Address": "http://localhost:5000" // Puerto donde corre Itm.Inventory.Api
+            "Address": "http://localhost:5000"
           }
         }
       }
