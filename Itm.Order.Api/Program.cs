@@ -22,6 +22,8 @@ builder.Services.AddGrpcClient<InventoryService.InventoryServiceClient>(o =>
 // Necesario para leer encabezados de la petición HTTP entrante
 builder.Services.AddHttpContextAccessor();
 
+builder.Services.AddTransient<AuthForwardingDelegatingHandler>();
+
 // Registramos el DelegatingHandler que propagará el X-Correlation-ID
 builder.Services.AddTransient<CorrelationIdDelegatingHandler>();
 
@@ -34,6 +36,8 @@ builder.Services
         client.Timeout = TimeSpan.FromSeconds(5);
     })
     .AddHttpMessageHandler<CorrelationIdDelegatingHandler>()
+        .AddHttpMessageHandler<AuthForwardingDelegatingHandler>()  // <-- agregar
+
     .AddStandardResilienceHandler();
 
 builder.Services
@@ -43,6 +47,7 @@ builder.Services
         client.Timeout = TimeSpan.FromSeconds(5);
     })
     .AddHttpMessageHandler<CorrelationIdDelegatingHandler>()
+    .AddHttpMessageHandler<AuthForwardingDelegatingHandler>()  // <-- agregar
     .AddStandardResilienceHandler();
 
 // Configuración del Productor
