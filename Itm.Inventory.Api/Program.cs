@@ -1,3 +1,4 @@
+// using Microsoft.AspNetCore.Server.Kestrel.Core;
 using System.Text;
 using Itm.Inventory.Api.Dtos;
 using Itm.Inventory.Api.Core.Interfaces;
@@ -78,6 +79,14 @@ builder.Services.AddAuthorization(options =>
 // 4. Servicios auxiliares para extraer información del usuario actual
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+// builder.WebHost.ConfigureKestrel(options =>
+// {
+//     options.ListenLocalhost(5000, listenOptions =>
+//     {
+//         listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
+//     });
+// });
+
 
 var app = builder.Build();
 

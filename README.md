@@ -133,7 +133,7 @@ Archivo: `Itm.Product.Api/Program.cs`
 builder.Services.AddHttpClient("InventoryClient", client =>
 {
     // Puerto del servicio Inventory.Api (revisar launchSettings.json)
-    client.BaseAddress = new Uri("http://localhost:5273");
+    client.BaseAddress = new Uri("http://localhost:5000");
     client.Timeout = TimeSpan.FromSeconds(5);
 })
 .AddStandardResilienceHandler();
@@ -249,7 +249,7 @@ Para verificar SignalR: abre `http://localhost:5400` en el navegador y conéctat
 Cuando el pago falle, la respuesta debe decir `"El stock fue devuelto"`. Verifica que el stock en Inventory siga en 50:
 
 ```
-GET http://localhost:5273/api/inventory/1
+GET http://localhost:5000/api/inventory/1
 Authorization: Bearer <token>
 ```
 
@@ -294,7 +294,7 @@ Estos no requieren JWT. El segundo usa los vectores precomputados y Qdrant.
 | Servicio     | URL                                  |
 | ------------ | ------------------------------------ |
 | Gateway      | http://localhost:5183                |
-| Inventory    | http://localhost:5273/swagger        |
+| Inventory    | http://localhost:5000/swagger        |
 | Order        | http://localhost:5110/swagger        |
 | Price        | http://localhost:5300/swagger        |
 | Product      | http://localhost:5041/swagger        |

@@ -13,7 +13,7 @@ graph TB
     end
 
     subgraph "Microservicios"
-        INV[Itm.Inventory.Api<br/>Inventario<br/>:5273]
+        INV[Itm.Inventory.Api<br/>Inventario<br/>:5000]
         ORD[Itm.Order.Api<br/>Órdenes SAGA<br/>:5110]
         PRD[Itm.Product.Api<br/>Productos<br/>:5041]
         PRC[Itm.Price.Api<br/>Precios + Redis Cache<br/>:5300]
@@ -74,39 +74,39 @@ graph TB
 
 ## Puertos de Servicios
 
-| Servicio | Puerto HTTP | Puerto Container |
-|----------|-------------|------------------|
-| Itm.Gateway.Api | 5183 | 8080 |
-| Itm.Inventory.Api | 5273 | 8080 |
-| Itm.Order.Api | 5110 | 8080 |
-| Itm.Product.Api | 5041 | 8080 |
-| Itm.Price.Api | 5300 | 8080 |
-| Itm.Notification.Api | 5400 | 8080 |
-| Itm.Search.Api | 5500 | 8080 |
+| Servicio             | Puerto HTTP | Puerto Container |
+| -------------------- | ----------- | ---------------- |
+| Itm.Gateway.Api      | 5183        | 8080             |
+| Itm.Inventory.Api    | 5000        | 8080             |
+| Itm.Order.Api        | 5110        | 8080             |
+| Itm.Product.Api      | 5041        | 8080             |
+| Itm.Price.Api        | 5300        | 8080             |
+| Itm.Notification.Api | 5400        | 8080             |
+| Itm.Search.Api       | 5500        | 8080             |
 
-| Infraestructura | Puerto |
-|-----------------|--------|
-| Redis | 6379 |
-| RabbitMQ | 5672 (AMQP), 15672 (Management) |
-| Elasticsearch | 9200 |
-| Qdrant | 6333 (gRPC) |
+| Infraestructura | Puerto                          |
+| --------------- | ------------------------------- |
+| Redis           | 6379                            |
+| RabbitMQ        | 5672 (AMQP), 15672 (Management) |
+| Elasticsearch   | 9200                            |
+| Qdrant          | 6333 (gRPC)                     |
 
 ## Protocolos de Comunicación
 
-| Desde | Hacia | Protocolo | Propósito |
-|-------|-------|-----------|-----------|
-| Gateway | Todos los MS | HTTP/1.1 | Enrutamiento YARP |
-| Order.Api | Inventory.Api | HTTP/1.1 | Reducir/Liberar stock |
-| Order.Api | Inventory.Api | gRPC | CheckStock |
-| Order.Api | Price.Api | HTTP/1.1 | Obtener precio |
-| Product.Api | Inventory.Api | HTTP/1.1 | Consultar stock |
-| Order.Api | RabbitMQ | AMQP 0-9-1 | Publicar OrderCreatedEvent |
-| Tickets.Functions | RabbitMQ | AMQP 0-9-1 | Consumir OrderCreatedEvent |
-| Notification.Api | RabbitMQ | AMQP 0-9-1 | Consumir OrderCreatedEvent |
-| Notification.Api | MAUI App | SignalR (WebSocket) | Notificar ticket listo |
-| Price.Api | Redis | Redis Serialization | Cache de precios |
-| Search.Api | Elasticsearch | REST (HTTP) | Búsqueda textual |
-| Search.Api | Qdrant | gRPC | Búsqueda semántica |
+| Desde             | Hacia         | Protocolo           | Propósito                  |
+| ----------------- | ------------- | ------------------- | -------------------------- |
+| Gateway           | Todos los MS  | HTTP/1.1            | Enrutamiento YARP          |
+| Order.Api         | Inventory.Api | HTTP/1.1            | Reducir/Liberar stock      |
+| Order.Api         | Inventory.Api | gRPC                | CheckStock                 |
+| Order.Api         | Price.Api     | HTTP/1.1            | Obtener precio             |
+| Product.Api       | Inventory.Api | HTTP/1.1            | Consultar stock            |
+| Order.Api         | RabbitMQ      | AMQP 0-9-1          | Publicar OrderCreatedEvent |
+| Tickets.Functions | RabbitMQ      | AMQP 0-9-1          | Consumir OrderCreatedEvent |
+| Notification.Api  | RabbitMQ      | AMQP 0-9-1          | Consumir OrderCreatedEvent |
+| Notification.Api  | MAUI App      | SignalR (WebSocket) | Notificar ticket listo     |
+| Price.Api         | Redis         | Redis Serialization | Cache de precios           |
+| Search.Api        | Elasticsearch | REST (HTTP)         | Búsqueda textual           |
+| Search.Api        | Qdrant        | gRPC                | Búsqueda semántica         |
 
 ## Flujo de Compra Exitosa
 

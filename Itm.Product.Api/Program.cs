@@ -21,7 +21,7 @@ builder.Services.AddHttpClient("InventoryClient", client =>
 {
     // OJO: Este puerto debe ser el del Inventory.Api (Revisar launchSettings.json)
     // En producción, esto viene de una variable de entorno, no quemado en código.
-    client.BaseAddress = new Uri("http://localhost:5273");
+    client.BaseAddress = new Uri("http://localhost:5000");
 
     // Timeout: Si el inventario no responde en 5s, cancelamos. 
     // Evita que el usuario espere infinitamente.

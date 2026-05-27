@@ -16,7 +16,7 @@ AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport
 // Agregar configuración del cliente gRPC para InventoryService
 builder.Services.AddGrpcClient<InventoryService.InventoryServiceClient>(o =>
 {
-    o.Address = new Uri("http://localhost:5273");
+    o.Address = new Uri("http://localhost:5000");
 });
 
 // Necesario para leer encabezados de la petición HTTP entrante
@@ -32,7 +32,7 @@ builder.Services
     .AddHttpClient("InventoryClient", client =>
     {
         // Puerto actual de Inventory.Api (ver launchSettings.json del proyecto Inventory)
-        client.BaseAddress = new Uri("http://localhost:5273");
+        client.BaseAddress = new Uri("http://localhost:5000");
         client.Timeout = TimeSpan.FromSeconds(5);
     })
     .AddHttpMessageHandler<CorrelationIdDelegatingHandler>()
