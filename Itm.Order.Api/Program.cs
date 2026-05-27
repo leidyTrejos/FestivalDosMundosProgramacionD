@@ -1,5 +1,9 @@
 using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Http.Resilience;
+using Microsoft.IdentityModel.Tokens;
 using MassTransit;
 using Itm.Order.Api.Handlers;
 using Itm.Inventory.Api.Protos;
@@ -9,6 +13,28 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// JWT authentication to populate HttpContext.User from forwarded token
+var jwtSettings = builder.Configuration.GetSection("JwtSettings");
+var secretKey = Encoding.UTF8.GetBytes(jwtSettings["SecretKey"]!);
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtSettings["Issuer"],
+            ValidateAudience = true,
+            ValidAudience = jwtSettings["Audience"],
+            ValidateLifetime = true,
+            RequireExpirationTime = false,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(secretKey)
+        };
+    });
+
+builder.Services.AddAuthorization();
 
 // Permitir gRPC sin TLS en desarrollo
 AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
@@ -69,6 +95,9 @@ builder.Services.AddMassTransit(x =>
 
 var app = builder.Build();
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -76,8 +105,10 @@ if (app.Environment.IsDevelopment())
 }
 
 // Endpoint principal de creación de órdenes con lógica SAGA (acción + compensación)
-app.MapPost("/api/orders", async (CreateOrderDto order, IHttpClientFactory factory, IBus bus, Itm.Inventory.Api.Protos.InventoryService.InventoryServiceClient grpcClient) =>
+app.MapPost("/api/orders", async (CreateOrderDto order, IHttpClientFactory factory, IBus bus, Itm.Inventory.Api.Protos.InventoryService.InventoryServiceClient grpcClient, HttpContext httpContext) =>
 {
+    var customerEmail = httpContext.User.FindFirstValue(ClaimTypes.Email) ?? "anonimo@itm.edu.co";
+
     // PASO 0: Verificar stock vía gRPC antes de modificar inventario
     var stockCheck = await grpcClient.CheckStockAsync(new Itm.Inventory.Api.Protos.StockRequest { ProductId = order.ProductId });
     if (!stockCheck.IsAvailable)
@@ -118,7 +149,7 @@ app.MapPost("/api/orders", async (CreateOrderDto order, IHttpClientFactory facto
 
         // PASO 4: Publicar evento OrderCreated para SAGA coreografiada
         var orderId = Guid.NewGuid();
-        var orderEvent = new OrderCreatedEvent(orderId, order.ProductId, "cliente@itm.edu.co", priceResponse.Amount * order.Quantity);
+        var orderEvent = new OrderCreatedEvent(orderId, order.ProductId, customerEmail, priceResponse.Amount * order.Quantity);
         await bus.Publish(orderEvent);
 
         Console.WriteLine($"[SAGA] Orden {orderId} creada. Evento OrderCreated publicado.");

@@ -19,12 +19,6 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddHttpClient("Internal", client =>
-{
-    client.BaseAddress = new Uri("http://localhost:5400");
-    client.Timeout = TimeSpan.FromSeconds(5);
-});
-
 builder.Services.AddMassTransit(x =>
 {
     x.AddConsumer<OrderCreatedConsumer>();

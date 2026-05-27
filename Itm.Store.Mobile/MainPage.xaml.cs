@@ -1,4 +1,6 @@
 ﻿using System.Net.Http.Json;
+using System.Text.Json;
+using Itm.Store.Mobile.Models;
 using Microsoft.AspNetCore.SignalR.Client;
 
 namespace Itm.Store.Mobile;
@@ -33,14 +35,30 @@ public partial class MainPage : ContentPage
             {
                 await Dispatcher.DispatchAsync(() =>
                 {
-                    ResultLabel.Text = $"Ticket recibido:\n{ticketJson}";
-                    ResultLabel.TextColor = Colors.Green;
-
-                    if (!string.IsNullOrEmpty(ticketJson) && ticketJson.Length > 100)
+                    try
                     {
-                        QrCodeImage.Source = ImageSource.FromStream(() =>
-                            new MemoryStream(Convert.FromBase64String(ticketJson)));
-                        QrCodeImage.IsVisible = true;
+                        var ticket = JsonSerializer.Deserialize<TicketReadyDto>(ticketJson);
+                        if (ticket == null)
+                        {
+                            ResultLabel.Text = "Error: respuesta inválida del servidor.";
+                            ResultLabel.TextColor = Colors.Red;
+                            return;
+                        }
+
+                        ResultLabel.Text = $"Ticket #{ticket.OrderId}\nEmitido: {ticket.IssuedAt:g}";
+                        ResultLabel.TextColor = Colors.Green;
+
+                        if (!string.IsNullOrEmpty(ticket.QrCodeBase64))
+                        {
+                            QrCodeImage.Source = ImageSource.FromStream(() =>
+                                new MemoryStream(Convert.FromBase64String(ticket.QrCodeBase64)));
+                            QrCodeImage.IsVisible = true;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        ResultLabel.Text = $"Error al procesar ticket: {ex.Message}";
+                        ResultLabel.TextColor = Colors.Red;
                     }
                 });
             });
@@ -58,15 +76,6 @@ public partial class MainPage : ContentPage
         }
     }
 
-    //private async void OnLoginClicked(object sender, EventArgs e)
-    //{
-    //    string simulatedToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJJdG1JZGVudGl0eVNlcnZlciIsImF1ZCI6Ikl0bVN0b3JlQXBpcyIsImVtYWlsIjoiYWRtaW5AaXRtLmVkdS5jbyIsInJvbGUiOiJBZG1pbmlzdHJhZG9yIn0.PaSdxe8NkHzbkrTA40janIgKn4gnVp63yWh_cenvUDw";
-
-    //    await SecureStorage.Default.SetAsync("jwt_token", simulatedToken);
-
-    //    ResultLabel.Text = "Token JWT guardado seguro en el dispositivo!";
-    //    ResultLabel.TextColor = Colors.Green;
-    //}
     private async void OnLoginClicked(object sender, EventArgs e)
     {
         try
@@ -81,10 +90,33 @@ public partial class MainPage : ContentPage
                 return;
             }
 
-            await SecureStorage.Default.SetAsync("jwt_token", "TOKEN_TEMPORAL_DE_PRUEBA");
+            var client = _httpClientFactory.CreateClient("GatewayClient");
+            var body = new { email, password };
+            var response = await client.PostAsJsonAsync("/auth/token", body);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                ResultLabel.Text = $"Error de autenticación: {errorBody}";
+                ResultLabel.TextColor = Colors.Red;
+                return;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<LoginResult>();
+            if (result?.token is null)
+            {
+                ResultLabel.Text = "Respuesta inválida del servidor.";
+                ResultLabel.TextColor = Colors.Red;
+                return;
+            }
+
+            await SecureStorage.Default.SetAsync("jwt_token", result.token);
 
             ResultLabel.Text = $"Sesión iniciada: {email}";
             ResultLabel.TextColor = Colors.LightGreen;
+
+            // Reconectar SignalR con el email del usuario autenticado
+            await ConnectToSignalR(email);
         }
         catch (Exception ex)
         {
@@ -92,6 +124,8 @@ public partial class MainPage : ContentPage
             ResultLabel.TextColor = Colors.Red;
         }
     }
+
+    private record LoginResult(string token, string email, string role);
 
     private async void OnGetDataClicked(object sender, EventArgs e)
     {
@@ -180,4 +214,9 @@ public partial class MainPage : ContentPage
             ResultLabel.TextColor = Colors.Red;
         }
     }
+}
+
+namespace Itm.Store.Mobile.Models
+{
+    public record TicketReadyDto(Guid OrderId, string CustomerEmail, string QrCodeBase64, DateTimeOffset IssuedAt);
 }

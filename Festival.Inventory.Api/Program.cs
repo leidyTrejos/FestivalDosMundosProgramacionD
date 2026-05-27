@@ -1,3 +1,4 @@
+using Festival.Inventory.Api.Dtos;
 using Festival.Inventory.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -74,6 +75,9 @@ internal class Program
 
         builder.Services.AddHttpContextAccessor();
 
+        // Store singleton compartido entre REST y gRPC
+        builder.Services.AddSingleton<FestivalInventoryStore>();
+
         var app = builder.Build();
 
         // --- 2. ZONA DE MIDDLEWARE ---
@@ -87,57 +91,51 @@ internal class Program
         app.UseAuthorization();
 
         // --- 3. ZONA DE DATOS (Simulación de BD en memoria) ---
-        // En producción: SQL Server + Redis para garantía de no-duplicados
-        var inventarioDb = new List<BoletaInventarioDto>
-{
-    new(1, "Medellin", 25000, 0),
-    new(1, "Madrid",   25000, 0),
-    new(2, "Medellin",  5000, 0),
-    new(2, "Madrid",    5000, 0),
-};
+        // FestivalInventoryStore singleton registrado arriba
 
         // --- 4. ZONA DE ENDPOINTS REST (Para consultas admin y health checks) ---
 
         // GET /api/inventory/{eventId}/{sede} -> Consultar stock de boletas
-        app.MapGet("/api/inventory/{eventId}/{sede}", (int eventId, string sede, HttpContext httpContext, ILogger<Program> logger) =>
+        app.MapGet("/api/inventory/{eventId}/{sede}", (int eventId, string sede, HttpContext httpContext, ILogger<Program> logger, FestivalInventoryStore store) =>
         {
             var correlationId = httpContext.Request.Headers["X-Correlation-ID"].FirstOrDefault() ?? "SIN-ID";
 
             using (logger.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId }))
             {
-                var item = inventarioDb.FirstOrDefault(b => b.EventId == eventId && b.Sede == sede);
+                var item = store.Items.FirstOrDefault(b => b.EventId == eventId && b.Sede == sede);
                 return item is not null ? Results.Ok(item) : Results.NotFound();
             }
         })
         .RequireAuthorization()
         .WithName("GetInventario");
 
-        // POST /api/inventory/reduce -> Acción SAGA: descontar boletas (vía REST para compatibilidad)
-        app.MapPost("/api/inventory/reduce", (ReservarBoletaDto request) =>
+        // Internal SAGA endpoint - in production, restrict to internal network via Kubernetes NetworkPolicy, not JWT role
+        app.MapPost("/api/inventory/reduce", (ReservarBoletaDto request, FestivalInventoryStore store) =>
         {
-            var item = inventarioDb.FirstOrDefault(b => b.EventId == request.EventId && b.Sede == request.Sede);
+            var item = store.Items.FirstOrDefault(b => b.EventId == request.EventId && b.Sede == request.Sede);
             if (item is null) return Results.NotFound(new { Error = "Evento no encontrado en bodega" });
             if (item.BoletasDisponibles < request.Quantity)
                 return Results.BadRequest(new { Error = "No hay suficientes boletas", Disponibles = item.BoletasDisponibles });
 
-            var index = inventarioDb.IndexOf(item);
-            inventarioDb[index] = item with
+            var index = store.Items.IndexOf(item);
+            store.Items[index] = item with
             {
                 BoletasDisponibles = item.BoletasDisponibles - request.Quantity,
                 BoletasVendidas = item.BoletasVendidas + request.Quantity
             };
 
-            return Results.Ok(new { Message = "Boletas reservadas", BoletasRestantes = inventarioDb[index].BoletasDisponibles });
-        });
+            return Results.Ok(new { Message = "Boletas reservadas", BoletasRestantes = store.Items[index].BoletasDisponibles });
+        })
+        .RequireAuthorization(); // Internal SAGA endpoint - in production, restrict to internal network via Kubernetes NetworkPolicy, not JWT role
 
-        // POST /api/inventory/release -> Compensación SAGA: devolver boletas (el Ctrl+Z)
-        app.MapPost("/api/inventory/release", (ReservarBoletaDto request) =>
+        // Internal SAGA endpoint - in production, restrict to internal network via Kubernetes NetworkPolicy, not JWT role
+        app.MapPost("/api/inventory/release", (ReservarBoletaDto request, FestivalInventoryStore store) =>
         {
-            var item = inventarioDb.FirstOrDefault(b => b.EventId == request.EventId && b.Sede == request.Sede);
+            var item = store.Items.FirstOrDefault(b => b.EventId == request.EventId && b.Sede == request.Sede);
             if (item is null) return Results.NotFound();
 
-            var index = inventarioDb.IndexOf(item);
-            inventarioDb[index] = item with
+            var index = store.Items.IndexOf(item);
+            store.Items[index] = item with
             {
                 BoletasDisponibles = item.BoletasDisponibles + request.Quantity,
                 BoletasVendidas = Math.Max(0, item.BoletasVendidas - request.Quantity)
@@ -145,10 +143,11 @@ internal class Program
 
             Console.WriteLine($"[COMPENSACIÓN] Se devolvieron {request.Quantity} boletas. " +
                               $"Evento={request.EventId} | Sede={request.Sede} | " +
-                              $"Nuevo stock: {inventarioDb[index].BoletasDisponibles}");
+                              $"Nuevo stock: {store.Items[index].BoletasDisponibles}");
 
-            return Results.Ok(new { Message = "Boletas liberadas por compensación SAGA", Stock = inventarioDb[index].BoletasDisponibles });
-        });
+            return Results.Ok(new { Message = "Boletas liberadas por compensación SAGA", Stock = store.Items[index].BoletasDisponibles });
+        })
+        .RequireAuthorization(); // Internal SAGA endpoint - in production, restrict to internal network via Kubernetes NetworkPolicy, not JWT role
 
         // --- 5. gRPC: El superhéroe de velocidad ---
         app.MapGrpcService<GrpcInventoryService>();

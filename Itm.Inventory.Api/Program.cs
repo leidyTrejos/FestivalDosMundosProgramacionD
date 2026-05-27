@@ -79,6 +79,9 @@ builder.Services.AddAuthorization(options =>
 // 4. Servicios auxiliares para extraer información del usuario actual
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+
+// 5. InventoryStore singleton compartido entre REST endpoints y gRPC
+builder.Services.AddSingleton<InventoryStore>();
 // builder.WebHost.ConfigureKestrel(options =>
 // {
 //     options.ListenLocalhost(5000, listenOptions =>
@@ -105,19 +108,14 @@ app.UseAuthentication(); // Verifica el token JWT en cada petición
 app.UseAuthorization();    // Verifica los permisos del usuario
 
 // --- 3. ZONA DE DATOS (Simulación de BD) ---
-// Usamos una lista en memoria. En la vida real, aquí iría un 'DbContext' de Entity Framework.
-var inventoryDb = new List<InventoryDto>
-{
-    new(1, 50, "LAPTOP-DELL"),
-    new(2, 0,  "MOUSE-GAMER") // Stock 0 para probar lógica
-};
+// InventoryStore singleton (registrado arriba) compartido entre REST y gRPC
 
 // --- 4. ZONA DE ENDPOINTS (Las Rutas) ---
 // MapGet: Define que responderemos a peticiones HTTP GET (Lectura).
 // "/api/inventory/{id}": La URL. {id} es una variable.
 // GET /api/inventory/1 -> id=1
 
-app.MapGet("/api/inventory/{id}", (int id, HttpContext httpContext, ILogger<Program> logger) =>
+app.MapGet("/api/inventory/{id}", (int id, HttpContext httpContext, ILogger<Program> logger, InventoryStore store) =>
 {
     // Extraemos el Correlation ID si viene de upstream (Gateway / Order.Api)
     var correlationId = httpContext.Request.Headers["X-Correlation-ID"].FirstOrDefault() ?? "SIN-ID";
@@ -125,7 +123,7 @@ app.MapGet("/api/inventory/{id}", (int id, HttpContext httpContext, ILogger<Prog
     using (logger.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId }))
     {
         // Lógica LINQ: Buscamos en la lista el primero que coincida con el ID.
-        var item = inventoryDb.FirstOrDefault(p => p.ProductId == id);
+        var item = store.Items.FirstOrDefault(p => p.ProductId == id);
 
         //  PATRÓN DE RESPUESTA HTTP:
         // Si existe (is not null) -> 200 OK con el dato.
@@ -136,16 +134,16 @@ app.MapGet("/api/inventory/{id}", (int id, HttpContext httpContext, ILogger<Prog
 .RequireAuthorization(); // Protegemos este endpoint, solo usuarios autenticados pueden acceder
 
 // POST /api/inventory/reduce-stock -> Reduce el stock de un producto
-// Solo usuarios con rol Administrador pueden reducir stock.
 // Usamos [FromBody] para indicar que el dato viene en el cuerpo de la petición (JSON).
-app.MapPost("/api/inventory/reduce", (ReduceStockDto request, ICurrentUserService currentUserService) =>
+// Internal SAGA endpoint - in production, restrict to internal network via Kubernetes NetworkPolicy, not JWT role
+app.MapPost("/api/inventory/reduce", (ReduceStockDto request, ICurrentUserService currentUserService, InventoryStore store) =>
 {
   // Auditoría básica usando la información del token JWT
     var email = currentUserService.ObtenerEmailUsuario();
     Console.WriteLine($"[AUDITORÍA] El usuario {email} intenta reducir stock del producto {request.ProductId}.");
 
     // 1. Buscamos el producto
-    var item = inventoryDb.FirstOrDefault(p => p.ProductId == request.ProductId);
+    var item = store.Items.FirstOrDefault(p => p.ProductId == request.ProductId);
 
     // 2. Validamos que exista el producto (Reglas de Negocio)
 
@@ -160,32 +158,26 @@ app.MapPost("/api/inventory/reduce", (ReduceStockDto request, ICurrentUserServic
 
 }
 // 3. Mutación de Estado (Restamos el stock)
-// Nota: Como usamos 'record', que es inmutable, aquí hacemos un truco sucio
-// modificando la lista directament para la clase.
-// En la vida real (SQL), haríamos un UPDATE en la base de datos.
-var index = inventoryDb.IndexOf(item);
-    inventoryDb[index] = item with { Stock = item.Stock - request.Quantity }; // Crea una nueva instancia con el stock reducido
+var index = store.Items.IndexOf(item);
+    store.Items[index] = item with { Stock = item.Stock - request.Quantity };
 
     // 4. Confirmación de la operación
-return Results.Ok(new { Message = "Stock actualizado",NewStock = inventoryDb[index].Stock });
+return Results.Ok(new { Message = "Stock actualizado",NewStock = store.Items[index].Stock });
 })
-.RequireAuthorization("AdminOnly");
+.RequireAuthorization(); // Internal SAGA endpoint - in production, restrict to internal network via Kubernetes NetworkPolicy, not JWT role
 
-//DTO para devolver stock (El mismo de reducir  sirve, o creamos uno nuevo)
-// Usamos el mismo DTO 'ReduceStockDto' (ProductId, Quantity) para la respuesta, pero podríamos crear uno específico si queremos más claridad.
-
-app.MapPost("/api/inventory/release", (ReduceStockDto request) =>
+// Internal SAGA endpoint - in production, restrict to internal network via Kubernetes NetworkPolicy, not JWT role
+app.MapPost("/api/inventory/release", (ReduceStockDto request, InventoryStore store) =>
 {
-    var item = inventoryDb.FirstOrDefault(p => p.ProductId == request.ProductId);
+    var item = store.Items.FirstOrDefault(p => p.ProductId == request.ProductId);
 if (item is null) return Results.NotFound();
-//Logica de Compensación (El Ctrl+Z del inventario)
-// sumamos lo que habiamos reducido antes
-var index = inventoryDb.IndexOf(item);
-    inventoryDb[index] = item with { Stock = item.Stock + request.Quantity }; // Crea una nueva instancia con el stock aumentado
-   Console.WriteLine($"[COMPENSACIÓN] Se devolvieron {request.Quantity} unidades al producto {item.Sku}. Nuevo stock: {inventoryDb[index].Stock}");
-    return Results.Ok(new { Message = "Stock liberado por fallo de transacción", CurrentStock = inventoryDb[index].Stock });
+var index = store.Items.IndexOf(item);
+    store.Items[index] = item with { Stock = item.Stock + request.Quantity };
+   Console.WriteLine($"[COMPENSACIÓN] Se devolvieron {request.Quantity} unidades al producto {item.Sku}. Nuevo stock: {store.Items[index].Stock}");
+    return Results.Ok(new { Message = "Stock liberado por fallo de transacción", CurrentStock = store.Items[index].Stock });
 
-});
+})
+.RequireAuthorization(); // Internal SAGA endpoint - in production, restrict to internal network via Kubernetes NetworkPolicy, not JWT role
 
 app.MapGrpcService<GrpcInventoryService>();
 
