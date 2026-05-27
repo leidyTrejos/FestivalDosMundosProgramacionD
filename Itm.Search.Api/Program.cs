@@ -10,8 +10,26 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddSingleton<ElasticsearchClient>(sp =>
 {
-    var url = builder.Configuration["ElasticsearchUrl"] ?? "http://localhost:9200";
-    var settings = new ElasticsearchClientSettings(new Uri(url))
+    var config = sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
+    var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>().CreateLogger("Elasticsearch");
+
+    var url = config["ElasticsearchUrl"];
+    if (string.IsNullOrWhiteSpace(url) || url == "SECRET_REPLACED_BY_ENV")
+    {
+        logger.LogWarning("ElasticsearchUrl no está configurada o contiene un placeholder; se usará el valor por defecto http://localhost:9200");
+        url = "http://localhost:9200";
+    }
+
+    if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+    {
+        // intentar añadir esquema http si falta
+        if (!Uri.TryCreate("http://" + url, UriKind.Absolute, out uri))
+        {
+            throw new InvalidOperationException($"Valor inválido para ElasticsearchUrl: '{url}'");
+        }
+    }
+
+    var settings = new ElasticsearchClientSettings(uri)
         .DefaultIndex("itm-events");
     return new ElasticsearchClient(settings);
 });

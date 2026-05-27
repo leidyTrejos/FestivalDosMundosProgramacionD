@@ -1,46 +1,67 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             x:Class="Itm.Store.Mobile.MainPage">
+             x:Class="Itm.Store.Mobile.MainPage"
+             BackgroundColor="#1f1f2e">
 
     <ScrollView>
-        <VerticalStackLayout Padding="30" Spacing="25">
+        <VerticalStackLayout Padding="30" Spacing="18">
 
-            <Label Text="ITM-Tickets Móvil" 
-                   FontSize="28" 
-                   FontAttributes="Bold" 
+            <Label Text="ITM-Tickets Móvil"
+                   FontSize="28"
+                   FontAttributes="Bold"
+                   TextColor="White"
                    HorizontalOptions="Center" />
 
+            <Entry x:Name="EmailEntry"
+                   Placeholder="Correo electrónico"
+                   Keyboard="Email"
+                   TextColor="White"
+                   PlaceholderColor="#b0b0b0"
+                   BackgroundColor="#33334d" />
+
+            <Entry x:Name="PasswordEntry"
+                   Placeholder="Contraseña"
+                   IsPassword="True"
+                   TextColor="White"
+                   PlaceholderColor="#b0b0b0"
+                   BackgroundColor="#33334d" />
+
             <Button x:Name="LoginBtn"
-                    Text="1. Iniciar Sesión (Guardar Token)"
+                    Text="1. Iniciar Sesión"
                     Clicked="OnLoginClicked"
-                    BackgroundColor="#512BD4" />
+                    BackgroundColor="#512BD4"
+                    TextColor="White" />
 
             <Button x:Name="GetDataBtn"
                     Text="2. Consultar Producto Seguramente"
                     Clicked="OnGetDataClicked"
-                    BackgroundColor="#2b82d4" />
+                    BackgroundColor="#2b82d4"
+                    TextColor="White" />
 
             <Button x:Name="GetPriceBtn"
                     Text="3. Ver Precio del Evento"
                     Clicked="OnGetPriceClicked"
-                    BackgroundColor="#2ecc71" />
+                    BackgroundColor="#2ecc71"
+                    TextColor="White" />
 
             <Button x:Name="BuyTicketBtn"
                     Text="4. Comprar Boleta"
                     Clicked="OnBuyTicketClicked"
-                    BackgroundColor="#e74c3c" />
+                    BackgroundColor="#e74c3c"
+                    TextColor="White" />
 
-            <Label x:Name="ResultLabel" 
+            <Label x:Name="ResultLabel"
                    Text="Esperando acción..."
                    TextColor="Gray"
                    FontSize="16" />
 
-            <Image x:Name="QrCodeImage" 
-                   HeightRequest="200"
-                   WidthRequest="200"
+            <Image x:Name="QrCodeImage"
+                   HeightRequest="220"
+                   WidthRequest="220"
+                   IsVisible="False"
                    HorizontalOptions="Center"
-                   IsVisible="False" />
+                   Margin="0,15,0,0" /> 
 
         </VerticalStackLayout>
     </ScrollView>

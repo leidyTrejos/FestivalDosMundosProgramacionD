@@ -6,6 +6,11 @@ using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Durante desarrollo, asegurarnos de que Kestrel escuche en todas las interfaces
+// para que el emulador Android (10.0.2.2) pueda conectarse al host de desarrollo.
+// Nota: esto es seguro en entorno de desarrollo, no exponga 0.0.0.0 en producción sin las medidas adecuadas.
+builder.WebHost.UseUrls("http://0.0.0.0:5183");
+
 // =========================
 // SEGURIDAD PERIMETRAL: Validación JWT en el Gateway
 // =========================

@@ -58,14 +58,39 @@ public partial class MainPage : ContentPage
         }
     }
 
+    //private async void OnLoginClicked(object sender, EventArgs e)
+    //{
+    //    string simulatedToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJJdG1JZGVudGl0eVNlcnZlciIsImF1ZCI6Ikl0bVN0b3JlQXBpcyIsImVtYWlsIjoiYWRtaW5AaXRtLmVkdS5jbyIsInJvbGUiOiJBZG1pbmlzdHJhZG9yIn0.PaSdxe8NkHzbkrTA40janIgKn4gnVp63yWh_cenvUDw";
+
+    //    await SecureStorage.Default.SetAsync("jwt_token", simulatedToken);
+
+    //    ResultLabel.Text = "Token JWT guardado seguro en el dispositivo!";
+    //    ResultLabel.TextColor = Colors.Green;
+    //}
     private async void OnLoginClicked(object sender, EventArgs e)
     {
-        string simulatedToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJJdG1JZGVudGl0eVNlcnZlciIsImF1ZCI6Ikl0bVN0b3JlQXBpcyIsImVtYWlsIjoiYWRtaW5AaXRtLmVkdS5jbyIsInJvbGUiOiJBZG1pbmlzdHJhZG9yIn0.PaSdxe8NkHzbkrTA40janIgKn4gnVp63yWh_cenvUDw";
+        try
+        {
+            var email = EmailEntry.Text?.Trim();
+            var password = PasswordEntry.Text;
 
-        await SecureStorage.Default.SetAsync("jwt_token", simulatedToken);
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+            {
+                ResultLabel.Text = "Debes ingresar correo y contraseña.";
+                ResultLabel.TextColor = Colors.Red;
+                return;
+            }
 
-        ResultLabel.Text = "Token JWT guardado seguro en el dispositivo!";
-        ResultLabel.TextColor = Colors.Green;
+            await SecureStorage.Default.SetAsync("jwt_token", "TOKEN_TEMPORAL_DE_PRUEBA");
+
+            ResultLabel.Text = $"Sesión iniciada: {email}";
+            ResultLabel.TextColor = Colors.LightGreen;
+        }
+        catch (Exception ex)
+        {
+            ResultLabel.Text = $"Error login: {ex.Message}";
+            ResultLabel.TextColor = Colors.Red;
+        }
     }
 
     private async void OnGetDataClicked(object sender, EventArgs e)
